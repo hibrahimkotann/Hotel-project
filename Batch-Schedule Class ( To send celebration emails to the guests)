@@ -1,0 +1,64 @@
+Batch-Schedule Class ( To send celebration emails to the guests)
+•	The guests are our continuous clients. We want to celebrate their birthdays with offering special discounts for them.
+
+public class BatchBirthdayCelebrationClass implements Database.Batchable<sObject>,Database.Stateful, Schedulable {
+    
+    List<String> listNames = new List<String>();
+    Integer amountGuest = 0;
+    List<Id> listId = new List<Id>();
+    public Database.QueryLocator start(Database.BatchableContext BC) {
+          Date todaysDate = System.today();
+          String query = 'SELECT Id, Date_of_Birth__c,Name,Email__c FROM Guest__c WHERE CALENDAR_MONTH(Date_of_Birth__c) = ' +todaysDate.month()  + 'AND DAY_IN_MONTH(Date_of_Birth__c) = ' + todaysDate.day();
+       
+        return Database.getQueryLocator(query);
+    }
+      
+        public void execute(Database.BatchableContext BC, List<Guest__c> listGuest) {
+        try {
+        if (listGuest.size() > 0){
+            List<Messaging.SingleEmailMessage> listMessaging = new  List<Messaging.SingleEmailMessage>();
+            for(Guest__c gst : listGuest){
+                Messaging.SingleEmailMessage eml = new  Messaging.SingleEmailMessage();
+                List<String> strEmail = new List<String>{gst.Email__c} ;
+                eml.setToAddresses(strEmail);
+                eml.setSubject( ' Hi...' + gst.Name + ' HappBirtday to you');
+                eml.setPlainTextBody( ' May the rest of your life be full of love like the beauty of your heart.' + '/n' +
+                                     'May you always be happy... Happy birthday!' + '/n' + 
+                                     'We look forward to welcoming you again at our hotel.');
+                listMessaging.add(eml);
+                listNames.add(gst.Name);
+                listId.add(gst.Id);
+                amountGuest++;
+            }
+            messaging.sendEmail(listMessaging);
+            
+        }
+        } catch( Exception e) {
+            System.debug('Exception occured ::' + e.getMessage());
+        }
+                     
+    }
+    public void finish(Database.BatchableContext BC) {
+        try{
+          Set<String> setUser = new Set<String>();
+          AsyncApexJob myJob = [SELECT Id, JobItemsProcessed, NumberOfErrors, Status, TotalJobItems FROM AsyncApexJob WHERE Id=:bc.getJobId()];
+            String myNotificationId = [SELECT Id, DeveloperName FROM CustomNotificationType WHERE DeveloperName = 'BirthdayNotification' LIMIT  1].Id;
+            User usr = [SELECT Id, Name, profile.Name, userrole.Name FROM User WHERE profile.Name = 'System Administrator' LIMIT 1];
+         setUser.add(usr.Id);
+        Messaging.CustomNotification cstmNot  =  new  Messaging.CustomNotification();
+        cstmNot.setTitle('Hello!' +' Birthday celebration email(s) has been sent to the guests on ' + myJob.Status + '\n'+ System.today());
+        cstmNot.setBody('The Guests are: ' + '\n' + listNames + '\n' + 'Total Number of the guests: ' + amountGuest); 
+         cstmNot.setNotificationTypeId(myNotificationId);
+       cstmNot.setTargetId(listId[0]); 
+            cstmNot.send(setUser);
+           }catch(Exception e){
+    System.debug('Exception - Finish: ' + e.getMessage());
+    }
+   }
+
+                 
+      public void execute(SchedulableContext sc) {
+       BatchBirthdayCelebrationClass batch = new BatchBirthdayCelebrationClass();
+       Database.executeBatch(batch);
+    }
+}
