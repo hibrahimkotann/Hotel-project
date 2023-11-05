@@ -1,0 +1,54 @@
+****************
+. As the year of experiences are different, we would like to increase the amount of leaving days based on the year of experience.
+Leaving days are reset at the end of the year and if there is available off days at the end of the year, 
+the particular employee may use it until March ist as outstanding off days. 
+On March 1st, we need to reset it, either. We need to have an automated process to reset the days based on the experience.
+**********************
+
+public class BatchEmployeeLeavingDays implements Database.Batchable<sObject>, Schedulable { 
+        
+        public Database.QueryLocator start(Database.BatchableContext bc){
+        return Database.getQueryLocator([SELECT Id, Available_Off_Days__c, Currently_Working__c, 
+                                         Outstanding_off_Days__c, Total_Off_Days__c, Used_Off_Days__c, Year_Experience_Here__c FROM Employee__c 
+                                         WHERE Currently_Working__c = TRUE]);
+    }
+    public void execute(Database.BatchableContext bc, List<Employee__c> listEmp){
+     try{
+    if(listEmp.size()>0) {
+    Date todaysDate = System.today(); 
+        for(Employee__c emp:listEmp){
+    if(todaysDate.month() == 1 && todaysDate.day() == 1){ 
+        emp.Outstanding_off_Days__c = emp.Available_Off_Days__c;
+        emp.Total_Off_Days__c = emp.Year_Experience_Here__c <= 2 ? 15 : (emp.Year_Experience_Here__c <= 5 ? 20 : 25); 
+        emp.Used_Off_Days__c = 0;
+    } else if(todaysDate.month()== 3 && todaysDate.day() == 1){ 
+        if(emp.Outstanding_off_Days__c > 0){
+        emp.Outstanding_off_Days__c = 0;
+       }
+      }
+     }
+      Database.update(listEmp);
+        
+     }
+     }catch ( Exception e) {
+    
+    System.debug('Exception detected: ' + e.getMessage());
+    }
+    }
+    public void finish(Database.BatchableContext bc){
+    AsyncApexJob myJob = [SELECT Id, Status, NumberOfErrors FROM AsyncApexJob WHERE Id =:bc.getJobId()]; 
+        System.debug('myJob: ' + myJob.Status);
+    }
+    public void execute(SchedulableContext sc) { 
+        
+        BatchEmployeeLeavingDays myBatch = new BatchEmployeeLeavingDays();
+        Database.executeBatch(myBatch);
+    /* String cron = '0 0 3 1 1,3 * *';
+    System.schedule('The Off Days Scheduled Job', cron, myBatch);
+    System.schedule('The Off Days Scheduled Job', '0 0 3 1 1,3 ? *', new BatchOffDays());*/
+    
+    }
+        
+    }
+******************Call Batch Class**************
+System.schedule('The Off Days Scheduled Job', '0 0 3 1 1,3 ? *', new BatchEmployeeLeavingDays());
